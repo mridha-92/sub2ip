@@ -20,7 +20,7 @@ Takes a list of subdomains, resolves them concurrently, and outputs **unique IPs
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/sub2ip.git
+git clone https://github.com/mridha-92/sub2ip.git
 cd sub2ip
 chmod +x sub2ip
 sudo mv sub2ip /usr/local/bin/sub2ip
