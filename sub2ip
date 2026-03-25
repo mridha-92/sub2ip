@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""
+sub2ip — Subdomain to IP extractor
+Outputs unique IPs only, one per line. Pipe-friendly.
+"""
+
+import sys
+import socket
+import argparse
+import concurrent.futures
+import os
+
+def resolve(subdomain: str, timeout: float) -> list:
+    subdomain = subdomain.strip().lower()
+    if not subdomain:
+        return []
+    for prefix in ("http://", "https://"):
+        if subdomain.startswith(prefix):
+            subdomain = subdomain[len(prefix):]
+    subdomain = subdomain.split("/")[0].split(":")[0]
+
+    socket.setdefaulttimeout(timeout)
+    try:
+        infos = socket.getaddrinfo(subdomain, None)
+        return list(set(i[4][0] for i in infos))
+    except Exception:
+        return []
+
+
+def main():
+    p = argparse.ArgumentParser(
+        prog="sub2ip",
+        description="Resolve subdomains → unique IPs (one per line)",
+        epilog="Examples:\n  sub2ip -i subs.txt\n  cat subs.txt | sub2ip -i -\n  sub2ip -i subs.txt -o ips.txt",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    p.add_argument("-i", "--input",   required=True, metavar="FILE",
+                   help="Subdomain list (use '-' for stdin)")
+    p.add_argument("-o", "--output",  metavar="FILE", default=None,
+                   help="Write IPs to file instead of stdout")
+    p.add_argument("-t", "--timeout", type=float, default=3.0,
+                   help="DNS timeout per host in seconds (default: 3)")
+    p.add_argument("-w", "--workers", type=int,   default=50,
+                   help="Concurrent threads (default: 50)")
+    args = p.parse_args()
+
+    # Load input
+    if args.input == "-":
+        lines = [l.strip() for l in sys.stdin if l.strip() and not l.startswith("#")]
+    else:
+        if not os.path.isfile(args.input):
+            sys.stderr.write(f"[!] File not found: {args.input}\n")
+            sys.exit(1)
+        with open(args.input) as f:
+            lines = [l.strip() for l in f if l.strip() and not l.startswith("#")]
+
+    if not lines:
+        sys.exit(0)
+
+    # Resolve concurrently, collect unique IPs
+    seen = set()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {pool.submit(resolve, sub, args.timeout): sub for sub in lines}
+        for fut in concurrent.futures.as_completed(futures):
+            for ip in fut.result():
+                seen.add(ip)
+
+    if not seen:
+        sys.exit(0)
+
+    output = "\n".join(sorted(seen)) + "\n"
+
+    if args.output:
+        with open(args.output, "w") as f:
+            f.write(output)
+    else:
+        sys.stdout.write(output)
+
+
+if __name__ == "__main__":
+    main()
